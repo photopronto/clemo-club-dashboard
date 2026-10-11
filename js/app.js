@@ -581,7 +581,7 @@
   }
 
   // ---------- PAST BOOKS ----------
-  const spineColour = (s) => { const c = ['#203737', '#D36047', '#3F6E64', '#8A4B3B', '#2F4F5F', '#A9773A', '#56693F', '#7A3E52']; let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return c[h % c.length]; };
+  const spineColour = (s) => { const c = ['#16181D', '#2D5B8C', '#B3542E', '#3F6B4E', '#6B4E8C', '#A87A2A', '#8C3A4A', '#4A4F57']; let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return c[h % c.length]; };
   async function viewBooks() {
     shell('books', html`<p class="muted">Loading…</p>`);
     const books = await api.books();
