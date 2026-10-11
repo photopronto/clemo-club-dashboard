@@ -333,3 +333,16 @@ table.data tfoot td { font-weight: 600; border-top: 2px solid var(--rule); }
 .nav a.brand, .nav a.brand:hover { display: grid; gap: 6px; background: none; padding: 0 10px 20px; border-radius: 0; color: var(--ink); }
 .signin .brand { padding: 0 0 10px; }
 .brand-logo[hidden], .brand-name[hidden] { display: none; }
+
+/* ---------- the shop's own drawings ---------- */
+.ink-art { display: block; height: auto; max-width: 100%; }
+:root[data-theme="dark"] .ink-art { filter: invert(1); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ink-art { filter: invert(1); } }
+.signin { grid-template-rows: 1fr auto; padding-bottom: 0; }
+.signin form { align-self: center; }
+.signin-street { width: min(1100px, 100%); margin: 24px auto 0; align-self: end; }
+.empty-state.caught-up { display: flex; align-items: center; justify-content: center; gap: 18px; text-align: left; color: var(--ink-2); padding: 22px 18px; }
+.empty-state.caught-up img { width: 64px; flex: none; }
+.empty-state.caught-up b { color: var(--ink); }
+.spine-art { width: 50px; }
+@media (max-width: 860px) { .spine-art { width: 34px; } }

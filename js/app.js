@@ -80,7 +80,7 @@
     const m = monthName(month, false), y = month.slice(0, 4);
     if (!book) {
       return html`<div class="spine empty" aria-label="No book chosen for ${m}"><span class="spine-top">&nbsp;</span>
-        <span class="spine-mid"><span class="spine-title">No book yet</span></span><span class="spine-month">${m}<small>${y}</small></span></div>`;
+        <span class="spine-mid"><img class="ink-art spine-art" src="img/open-book.webp" alt="" width="54" height="50"><span class="spine-title">No book yet</span></span><span class="spine-month">${monthShort(month)}<small>${y}</small></span></div>`;
     }
     return html`<div class="spine" aria-label="${book.title} by ${book.author || ''}, ${m} ${y}">
       <span class="spine-top">CLEMO</span>
@@ -159,7 +159,7 @@
   function addDays(iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 
   function alertList(list) {
-    if (!list.length) return html`<div class="empty-state">Nothing needs you right now.</div>`;
+    if (!list.length) return html`<div class="empty-state caught-up"><img class="ink-art" src="img/tortoise.webp" alt="" width="72" height="86"><div><b>All caught up.</b><br>Nothing needs you right now.</div></div>`;
     return html`<ul class="list">${list.map((a) => html`
       <li>
         <span class="alert-dot ${a.severity}" aria-hidden="true"></span>
@@ -733,7 +733,8 @@
       <label class="field">Email<input type="email" name="email" autocomplete="username" required></label>
       <label class="field">Password<input type="password" name="password" autocomplete="current-password" required></label>
       <button class="btn primary" type="submit">Sign in</button>
-    </form></div>`;
+    </form>
+    <img class="ink-art signin-street" src="img/shopfront.webp" alt="" width="1600" height="417" decoding="async"></div>`;
     document.getElementById('signin').addEventListener('submit', async (e) => {
       e.preventDefault(); const f = new FormData(e.target);
       try { await api.signIn(f.get('email').trim(), f.get('password')); boot(); }
