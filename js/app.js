@@ -45,8 +45,7 @@
     app.innerHTML = html`
       <div class="shell">
         <nav class="nav" aria-label="Main">
-          <div class="brand"><div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></div>
-            <div class="brand-name">Clemo Club<span>Clemo Books, Newquay</span></div></div>
+          ${brand()}
           ${NAV.map(([key, label, icon]) => html`<a href="#/${key}" ${raw(active === key ? 'aria-current="page"' : '')}>${icon}<span>${label}</span>${badge(key)}</a>`)}
           <div class="nav-foot">${state.me ? state.me.email : ''}<br><button type="button" data-action="signout">${api.demo ? 'Reset demo' : 'Sign out'}</button></div>
         </nav>
@@ -68,6 +67,13 @@
     return d;
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
+  // ---------- brand ----------
+  const LOGO = 'https://clemobooks.co.uk/wp-content/uploads/2026/01/Clemo-Books-Logo-Web.png';
+  const brand = () => raw(`<a class="brand" href="#/overview" aria-label="Clemo Club overview">
+      <img class="brand-logo" src="${LOGO}" alt="Clemo Books" onerror="this.hidden=true;this.nextElementSibling.hidden=false">
+      <span class="brand-name" hidden>Clemo Books</span>
+      <span class="brand-sub">Clemo Club</span></a>`);
 
   // ---------- spine ----------
   function spine(month, book) {
@@ -575,7 +581,7 @@
   }
 
   // ---------- PAST BOOKS ----------
-  const spineColour = (s) => { const c = ['#0D6A66', '#7A4E2D', '#3A5A78', '#8B3A4A', '#4E6B3A', '#5B4A7A', '#9A6B1F', '#2F5D62']; let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return c[h % c.length]; };
+  const spineColour = (s) => { const c = ['#203737', '#D36047', '#3F6E64', '#8A4B3B', '#2F4F5F', '#A9773A', '#56693F', '#7A3E52']; let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return c[h % c.length]; };
   async function viewBooks() {
     shell('books', html`<p class="muted">Loading…</p>`);
     const books = await api.books();
@@ -721,7 +727,7 @@
   // ---------- sign in ----------
   function signIn(msg) {
     app.innerHTML = html`<div class="signin"><form id="signin">
-      <div class="brand"><div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></div><div class="brand-name">Clemo Club<span>Clemo Books, Newquay</span></div></div>
+      ${brand()}
       <h1>Sign in</h1>
       ${msg ? html`<div class="notice danger">${msg}</div>` : ''}
       <label class="field">Email<input type="email" name="email" autocomplete="username" required></label>
