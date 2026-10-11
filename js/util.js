@@ -89,6 +89,9 @@
     close: ic('<path d="M6 6l12 12M18 6 6 18"/>'),
     check: ic('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
     refresh: ic('<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>'),
+    search: ic('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>'),
+    bell: ic('<path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
+    signout: ic('<path d="M14 4h5v16h-5"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h10"/>'),
   };
 
   window.U = { esc, raw, html, gbp, todayISO, monthStart, addMonths, fmtDate, fmtShort, monthName, monthShort, ago, tenure, addressLines, toast, download, icons };

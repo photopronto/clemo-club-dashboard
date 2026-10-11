@@ -41,19 +41,36 @@
 
   function shell(active, content) {
     const n = unread().length;
-    const badge = (key) => (key === 'overview' && n ? html`<span class="count">${n}</span>` : '');
+    const email = state.me ? state.me.email : '';
     app.innerHTML = html`
       <div class="shell">
         <nav class="nav" aria-label="Main">
-          ${brand()}
-          ${NAV.map(([key, label, icon]) => html`<a href="#/${key}" ${raw(active === key ? 'aria-current="page"' : '')}>${icon}<span>${label}</span>${badge(key)}</a>`)}
-          <div class="nav-foot">${state.me ? state.me.email : ''}<br><button type="button" data-action="signout">${api.demo ? 'Reset demo' : 'Sign out'}</button></div>
+          <a class="rail-logo" href="#/overview" title="Clemo Club" aria-label="Clemo Club overview"><img class="ink-art" src="img/open-book.webp" alt="" width="42" height="39"></a>
+          ${NAV.map(([key, label, icon]) => html`<a href="#/${key}" title="${label}" ${raw(active === key ? 'aria-current="page"' : '')}>${icon}<span class="rail-label">${label}</span>${key === 'overview' && n ? html`<span class="count" aria-label="${n} alerts">${n}</span>` : ''}</a>`)}
+          <div class="nav-foot"><button type="button" class="rail-btn" data-action="signout" title="${api.demo ? 'Reset demo' : 'Sign out'}" aria-label="${api.demo ? 'Reset demo' : 'Sign out'}">${icons.signout}</button></div>
         </nav>
-        <main id="main">${api.demo ? html`<div class="demo-banner">Demo mode with sample members. Nothing here is real, and changes vanish when you reload.</div>` : ''}${content}</main>
+        <main id="main">
+          <header class="topbar">
+            <label class="search">${icons.search}<span class="sr-only">Search members</span>
+              <input type="search" id="top-search" placeholder="Search members by name, email or postcode" value="${memberQuery}" autocomplete="off"></label>
+            <div class="topbar-right">
+              <a class="top-btn" href="#/overview" aria-label="${n} alerts">${icons.bell}<span class="hide-m">Alerts</span><span class="count ${n ? 'on' : ''}">${n}</span></a>
+              <span class="who" title="${email}">${(email || '?').slice(0, 1)}</span>
+            </div>
+          </header>
+          ${api.demo ? html`<div class="demo-banner">Demo mode with sample members. Nothing here is real, and changes vanish when you reload.</div>` : ''}${content}
+        </main>
         <nav class="tabbar" aria-label="Main">
           ${NAV.filter(([k]) => k !== 'books').map(([key, label, icon]) => html`<a href="#/${key}" ${raw(active === key ? 'aria-current="page"' : '')}>${icon}<span>${label.replace('This month', 'Month')}</span>${key === 'overview' && n ? html`<span class="count">${n}</span>` : ''}</a>`)}
         </nav>
       </div>`;
+    const search = document.getElementById('top-search');
+    search.addEventListener('input', (e) => {
+      memberQuery = e.target.value;
+      if (!location.hash.startsWith('#/members')) { memberFilter = 'all'; location.hash = '#/members'; }
+      else if (typeof renderMembers === 'function') renderMembers();
+    });
+    if (active === 'members' && memberQuery) { search.focus(); search.setSelectionRange(memberQuery.length, memberQuery.length); }
   }
 
   function closeDrawer() { document.querySelectorAll('.scrim, .drawer').forEach((el) => el.remove()); }
@@ -358,7 +375,7 @@
   }
 
   // ---------- MEMBERS ----------
-  let memberFilter = 'current', memberQuery = '';
+  let memberFilter = 'current', memberQuery = '', renderMembers = null;
   async function viewMembers(openId) {
     shell('members', html`<p class="muted">Loading…</p>`);
     const rows = await api.overview();
@@ -389,12 +406,11 @@
     shell('members', html`
       <div class="page-head"><div><h1>Members</h1><div class="sub" id="member-count"></div></div></div>
       <div class="filters">
-        <input type="search" id="member-search" placeholder="Search name, email or postcode" value="${memberQuery}" aria-label="Search members">
         <div class="seg" role="group" aria-label="Show">${Object.entries(filters).map(([k, [label]]) => html`<button type="button" data-filter="${k}" aria-pressed="false">${label}${k === 'attention' ? ' (' + rows.filter(needsAttention).length + ')' : ''}</button>`)}</div>
       </div>
       <div class="panel table-wrap" id="member-table"></div>`);
     render();
-    document.getElementById('member-search').addEventListener('input', (e) => { memberQuery = e.target.value; render(); });
+    renderMembers = render;
     app.onclick = (e) => {
       const f = e.target.closest('[data-filter]'); if (f) { memberFilter = f.dataset.filter; render(); return; }
       const r = e.target.closest('[data-open]'); if (r) { location.hash = '#/members/' + r.dataset.open; return; }
@@ -561,7 +577,7 @@
       <section class="section">
         <div class="section-head"><h2>Profit by month</h2></div>
         <div class="panel pad" style="padding-bottom:34px"><div class="bars" role="img" aria-label="Profit by month">
-          ${hist.map((h) => html`<div class="bar ${h.profit < 0 ? 'neg' : ''}"><em>${gbp(h.profit, 0)}</em><i style="height:${Math.max(2, Math.round(Math.abs(h.profit) / max * 100))}%"></i><span>${monthShort(h.month)}</span></div>`)}
+          ${hist.map((h, i) => html`<div class="bar ${h.profit < 0 ? 'neg' : ''} ${i === hist.length - 1 ? 'now' : ''}"><em>${gbp(h.profit, 0)}</em><i style="height:${Math.max(2, Math.round(Math.abs(h.profit) / max * 100))}%"></i><span>${monthShort(h.month)}</span></div>`)}
         </div></div>
       </section>
       <section class="section">
