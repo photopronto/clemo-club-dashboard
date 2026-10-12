@@ -92,6 +92,13 @@
       <span class="brand-name" hidden>Clemo Books</span>
       <span class="brand-sub">Clemo Club</span></a>`);
 
+  // ---------- cover (or spine when there's no cover) ----------
+  function bookFace(month, book) {
+    if (!book || !book.cover_url) return spine(month, book);
+    return html`<div class="cover-wrap"><img class="cover" src="${book.cover_url}" alt="Cover of ${book.title}" referrerpolicy="no-referrer"
+      onerror="this.parentNode.classList.add('broken')">${spine(month, book)}</div>`;
+  }
+
   // ---------- spine ----------
   function spine(month, book) {
     const m = monthName(month, false), y = month.slice(0, 4);
@@ -141,7 +148,7 @@
       <section class="section">
         <div class="section-head"><h2>${monthName(THIS_MONTH)}</h2><div class="right"><a class="btn small" href="#/month">Open this month</a></div></div>
         <div class="month">
-          ${spine(THIS_MONTH, sum.book)}
+          ${bookFace(THIS_MONTH, sum.book)}
           <div class="month-body">
             ${sum.book ? html`<h2>${sum.book.title}</h2><p class="byline">${sum.book.author || ''}</p>`
               : html`<h2>No book chosen yet</h2><p class="byline">Add this month's pick to work out copies and profit.</p>`}
@@ -215,7 +222,7 @@
       </div>
 
       <div class="month">
-        ${spine(month, book)}
+        ${bookFace(month, book)}
         <div class="month-body">
           <form class="panel pad" id="book-form">
             <h3 style="margin-bottom:12px">${book ? 'This month’s book' : 'Add this month’s book'}</h3>
@@ -223,11 +230,15 @@
               <label class="field wide">Title<input type="text" name="title" required value="${book ? book.title : ''}"></label>
               <label class="field">Author<input type="text" name="author" value="${book ? book.author || '' : ''}"></label>
               <label class="field">ISBN<input type="text" name="isbn" inputmode="numeric" value="${book ? book.isbn || '' : ''}"></label>
+              <div class="field find-cell"><span aria-hidden="true">&nbsp;</span><button class="btn" type="button" data-action="find-book">${icons.search} Find cover</button></div>
               <label class="field">Cost per copy (£)<input type="number" name="cost_per_copy" step="0.01" min="0" value="${book && book.cost_per_copy != null ? book.cost_per_copy : ''}"></label>
               <label class="field">Copies ordered<input type="number" name="copies_ordered" min="0" step="1" placeholder="${sum.copies_needed}" value="${book && book.copies_ordered != null ? book.copies_ordered : ''}"></label>
               <label class="field">Supplier<input type="text" name="supplier" value="${book ? book.supplier || '' : ''}"></label>
               <label class="field">Shop price (£)<input type="number" name="rrp" step="0.01" min="0" value="${book && book.rrp != null ? book.rrp : ''}"></label>
               <label class="field wide">Notes<input type="text" name="notes" value="${book ? book.notes || '' : ''}"></label>
+              <label class="field wide">Cover image
+                <span class="cover-field"><img id="cover-preview" alt="" ${raw(book && book.cover_url ? '' : 'hidden')} src="${book && book.cover_url ? book.cover_url : ''}" referrerpolicy="no-referrer">
+                <input type="text" name="cover_url" inputmode="url" placeholder="Found automatically from the ISBN, or paste an image link" value="${book ? book.cover_url || '' : ''}"></span></label>
             </div>
             <div style="margin-top:14px;display:flex;gap:10px;align-items:center"><button class="btn primary" type="submit">Save book</button>
               <span class="small muted">Leave "Copies ordered" empty to use the suggested ${sum.copies_needed}.</span></div>
@@ -299,12 +310,28 @@
     // book form
     document.getElementById('book-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const f = new FormData(e.target);
+      const form = e.target;
+      if (!form.cover_url.value.trim() && (form.isbn.value.trim() || form.title.value.trim())) {
+        const btn = form.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Finding cover…';
+        try { await fillFromLookup(form, true); } catch (err) { /* save anyway */ }
+      }
+      const f = new FormData(form);
       const num = (k) => (f.get(k) === '' || f.get(k) == null ? null : Number(f.get(k)));
       await guard(() => api.saveBook({ month, title: f.get('title').trim(), author: f.get('author').trim() || null, isbn: f.get('isbn').trim() || null,
         cost_per_copy: num('cost_per_copy'), copies_ordered: num('copies_ordered'), supplier: f.get('supplier').trim() || null,
-        rrp: num('rrp'), notes: f.get('notes').trim() || null }), 'Book saved');
+        rrp: num('rrp'), notes: f.get('notes').trim() || null, cover_url: f.get('cover_url').trim() || null }), 'Book saved');
       viewMonth(month);
+    });
+    const bookForm = document.getElementById('book-form');
+    bookForm.cover_url.addEventListener('input', () => setCoverPreview(bookForm.cover_url.value.trim()));
+    bookForm.querySelector('[data-action="find-book"]').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      if (!bookForm.isbn.value.trim() && !bookForm.title.value.trim()) { toast('Add the ISBN or the title first'); return; }
+      btn.disabled = true; const label = btn.innerHTML; btn.textContent = 'Looking…';
+      try {
+        const found = await fillFromLookup(bookForm, false);
+        toast(found ? 'Cover found' : 'No cover found. Paste an image link instead.');
+      } finally { btn.disabled = false; btn.innerHTML = label; }
     });
     document.getElementById('cost-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -337,6 +364,22 @@
       await guard(() => api.setFulfilment(month, t.dataset.id, { [field]: t.checked ? new Date().toISOString() : null }),
         t.checked ? (field === 'posted_at' ? 'Marked as posted' : 'Marked as collected') : 'Unticked');
     };
+  }
+
+  function setCoverPreview(url) {
+    const img = document.getElementById('cover-preview');
+    if (!img) return;
+    if (url) { img.src = url; img.hidden = false; img.onerror = () => { img.hidden = true; }; } else { img.hidden = true; img.removeAttribute('src'); }
+  }
+
+  /** Look the book up and fill in the cover plus any empty fields. Returns true if a cover was found. */
+  async function fillFromLookup(form, quiet) {
+    const r = await Covers.find({ isbn: form.isbn.value, title: form.title.value.trim(), author: form.author.value.trim() });
+    if (!form.title.value.trim() && r.title) form.title.value = r.title;
+    if (!form.author.value.trim() && r.author) form.author.value = r.author;
+    if (!form.isbn.value.trim() && r.isbn) form.isbn.value = r.isbn;
+    if (r.cover && (!quiet || !form.cover_url.value.trim())) { form.cover_url.value = r.cover; setCoverPreview(r.cover); }
+    return !!r.cover;
   }
 
   function labelDialog(month, postal, book) {
@@ -605,7 +648,9 @@
     shell('books', html`
       <div class="page-head"><div><h1>Past books</h1><div class="sub">Every Clemo Club pick so far.</div></div></div>
       ${books.length ? html`
-        <div class="shelf" aria-label="Bookshelf">${books.slice().reverse().map((b) => html`<button class="book" data-month="${b.month}" style="background:${spineColour(b.title)};height:${130 + (b.title.length % 5) * 12}px" title="${b.title}, ${monthName(b.month)}">${b.title}</button>`)}</div>
+        <div class="shelf" aria-label="Bookshelf">${books.slice().reverse().map((b) => b.cover_url
+          ? html`<button class="book has-cover" data-month="${b.month}" title="${b.title}, ${monthName(b.month)}"><img src="${b.cover_url}" alt="${b.title}" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentNode.classList.remove('has-cover');this.parentNode.style.background='${spineColour(b.title)}';this.replaceWith(document.createTextNode(this.alt))"></button>`
+          : html`<button class="book" data-month="${b.month}" style="background:${spineColour(b.title)};height:${130 + (b.title.length % 5) * 12}px" title="${b.title}, ${monthName(b.month)}">${b.title}</button>`)}</div>
         <div class="panel table-wrap" style="margin-top:22px"><table class="data">
           <thead><tr><th>Month</th><th>Book</th><th class="r">Members</th><th class="r hide-m">Copies</th><th class="r hide-m">Cost a copy</th><th class="r">Profit</th></tr></thead>
           <tbody>${books.map((b, i) => html`<tr class="clickable" data-month="${b.month}" tabindex="0">
