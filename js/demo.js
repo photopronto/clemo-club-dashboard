@@ -256,6 +256,12 @@
           { id: 1, received_at: new Date(Date.now() - 86400e3).toISOString(), event_type: 'ping', wp_id: null, result: 'pong' }];
       },
       async changePassword() { throw new Error('Passwords can’t be changed in the demo'); },
+      async recentPayments(n = 10) {
+        return wait(payments.slice().sort((a, b) => (b.order_date || b.created_at || '').localeCompare(a.order_date || a.created_at || '')).slice(0, n).map((p) => {
+          const s = subs.find((x) => x.id === p.subscription_id) || {}; const m = members.find((x) => x.id === p.member_id) || {};
+          return Object.assign({}, p, { name: memberName(m), plan: s.plan || null, deleted: !!s.deleted_at });
+        }));
+      },
       async setHidden(sid, hidden) {
         const s = subs.find((x) => x.id === sid); s.hidden_at = hidden ? new Date().toISOString() : null;
         if (hidden) alerts.forEach((a) => { if (a.subscription_id === sid && !a.read_at) a.read_at = new Date().toISOString(); });

@@ -83,6 +83,16 @@
       async removeStaff(email) { must(await sb.from('staff').delete().eq('email', email)); },
       async eventLog() { return must(await sb.from('event_log').select('id,received_at,event_type,wp_id,result').order('id', { ascending: false }).limit(40)); },
       async runChecks() { return must(await sb.rpc('run_daily_checks')); },
+      async recentPayments(n = 10) {
+        const rows = must(await sb.from('payments')
+          .select('id,kind,status,amount,paid_at,order_date,created_at,subscription_id,members(first_name,last_name,email),subscriptions(plan,deleted_at)')
+          .order('order_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).limit(n));
+        return rows.map((p) => {
+          const m = p.members || {}, s = p.subscriptions || {};
+          return Object.assign({}, p, { name: [m.first_name, m.last_name].filter(Boolean).join(' ') || m.email || 'Unknown',
+            plan: s.plan || null, deleted: !!s.deleted_at });
+        });
+      },
       async setHidden(subId, hidden) { must(await sb.rpc('set_hidden', { p_sub: subId, p_hidden: hidden })); },
       async deleteSubscription(subId) { return must(await sb.rpc('delete_subscription', { p_sub: subId })); },
       async commands(subId) { return must(await sb.from('commands').select('*').eq('subscription_id', subId).order('created_at', { ascending: false }).limit(12)); },

@@ -158,14 +158,14 @@
           <div class="month-body">
             ${sum.book ? html`<h2>${sum.book.title}</h2><p class="byline">${sum.book.author || ''}</p>`
               : html`<h2>No book chosen yet</h2><p class="byline">Add this month's pick to work out copies and profit.</p>`}
-            <div class="figures">
+            ${sum.missing_book_cost ? html`<p class="small muted" style="margin:0">Profit doesn't include the book yet. Add its cost per copy on This month.</p>` : ''}
+            <div class="figures fill">
               <div class="figure"><b>${sum.copies_needed}</b><span>copies to order (incl. ${setting('spare_copies', 1)} spare)</span></div>
               <div class="figure"><b>${sum.postal}</b><span>to post</span></div>
               <div class="figure"><b>${sum.local}</b><span>to collect</span></div>
               <div class="figure"><b>${gbp(sum.revenue, 0)}</b><span>taken so far</span></div>
               <div class="figure"><b>${gbp(sum.costs, 0)}</b><span>costs</span></div>
             </div>
-            ${sum.missing_book_cost ? html`<p class="small muted" style="margin-top:10px">Profit doesn't include the book yet. Add its cost per copy on This month.</p>` : ''}
           </div>
         </div>
       </section>
@@ -176,6 +176,8 @@
           <div class="panel">${due.length ? html`<ul class="list">${due.map((r) => html`
             <li><div class="alert-main"><b><a href="#/members/${r.subscription_id}">${r.name}</a></b><p>${planTag(r.plan, r.kind)} ${gbp(r.price)}</p></div>
             <div class="num">${fmtShort(r.next_payment_on)}</div></li>`)}</ul>` : html`<div class="empty-state">No renewals in the next 7 days.</div>`}</div>
+          <div class="section-head" style="margin-top:24px"><h2>Recent payments</h2></div>
+          <div class="panel table-wrap" id="recent-payments"><div class="empty-state">Loading…</div></div>
         </div>
         <div>
           <div class="section-head"><h2>Payment problems</h2></div>
@@ -184,6 +186,28 @@
             <div class="num">${gbp(r.price)}</div><a class="btn small" href="#/members/${r.subscription_id}">Retry or send link</a></li>`)}</ul>` : html`<div class="empty-state">Every renewal has gone through.</div>`}</div>
         </div>
       </section>`);
+    loadRecentPayments();
+    app.onclick = (e) => {
+      const o = e.target.closest('#recent-payments [data-open]'); if (o) { location.hash = '#/members/' + o.dataset.open; return; }
+      const t = e.target.closest('[data-action]'); if (t) commonAction(t);
+    };
+  }
+
+  async function loadRecentPayments() {
+    const box = document.getElementById('recent-payments'); if (!box) return;
+    let list;
+    try { list = await api.recentPayments(10); } catch (e) { box.innerHTML = html`<div class="empty-state">Couldn't load payments.</div>`; return; }
+    if (!document.body.contains(box)) return;
+    const what = { signup: 'Joined', renewal: 'Renewal', gift: 'Gift' };
+    const tag = { paid: html`<span class="tag ok">Paid</span>`, failed: html`<span class="tag bad">Failed</span>`, refunded: html`<span class="tag warn">Refunded</span>` };
+    box.innerHTML = list.length ? html`<table class="data recent"><thead><tr><th>Date</th><th>Member</th><th class="hide-m">For</th><th class="r">Amount</th><th>Status</th></tr></thead>
+      <tbody>${list.map((p) => html`<tr ${raw(p.subscription_id && !p.deleted ? 'class="clickable" data-open="' + U.esc(p.subscription_id) + '" tabindex="0"' : '')}>
+        <td class="num">${fmtShort(p.paid_at || p.order_date || p.created_at)}</td>
+        <td class="name">${p.name}</td>
+        <td class="hide-m">${what[p.kind] || p.kind}${p.plan ? html` · ${p.plan === 'postal' ? 'Postal' : 'Local'}` : ''}</td>
+        <td class="r">${gbp(p.amount)}</td>
+        <td>${tag[p.status] || html`<span class="tag plain">${p.status}</span>`}</td></tr>`)}</tbody></table>`
+      : html`<div class="empty-state">No payments yet.</div>`;
   }
 
   function addDays(iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
