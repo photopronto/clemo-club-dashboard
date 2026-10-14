@@ -341,3 +341,25 @@ table.data th:last-child, table.data td:last-child { padding-right: 22px; }
   .cover-wrap { width: 120px; }
   .month:has(.cover-wrap:not(.broken)) { grid-template-columns: 120px minmax(0, 1fr); }
 }
+
+/* ---------- payment actions, hide and delete ---------- */
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pay-actions { margin: 4px 0 8px; border-left: 4px solid var(--danger); }
+.pay-actions h3 { display: flex; align-items: center; gap: 10px; }
+.act-form { display: grid; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line-strong); }
+.act-form input[type=date] { max-width: 220px; }
+.cmd-list { margin: 14px -24px -22px; border-top: 1px solid var(--line-strong); }
+.cmd-list > li { padding: 10px 24px; }
+.email-preview { background: var(--field); border: 1px solid var(--line-strong); padding: 16px 18px; font-size: .9rem; display: grid; gap: 10px; }
+.email-subject { font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.email-text { white-space: pre-line; color: var(--ink-2); }
+.email-text:empty { display: none; }
+.email-button { justify-self: start; background: var(--dark); color: var(--dark-ink); font-weight: 600; padding: 8px 16px; }
+.hide-zone { margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--line-strong); display: grid; gap: 12px; }
+.confirm { background: var(--tile); padding: 16px 18px; display: grid; gap: 10px; }
+.confirm.danger { background: var(--danger-soft); }
+.confirm p { margin: 0; }
+.btn.danger-fill { background: var(--danger); color: #fff; }
+.btn.danger-fill:hover { background: var(--danger); filter: brightness(1.1); }
+code { font-size: .85em; background: var(--tile-2); padding: 1px 4px; }
+.act-form[hidden], .confirm[hidden] { display: none; }

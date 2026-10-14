@@ -83,6 +83,13 @@
       async removeStaff(email) { must(await sb.from('staff').delete().eq('email', email)); },
       async eventLog() { return must(await sb.from('event_log').select('id,received_at,event_type,wp_id,result').order('id', { ascending: false }).limit(40)); },
       async runChecks() { return must(await sb.rpc('run_daily_checks')); },
+      async setHidden(subId, hidden) { must(await sb.rpc('set_hidden', { p_sub: subId, p_hidden: hidden })); },
+      async deleteSubscription(subId) { return must(await sb.rpc('delete_subscription', { p_sub: subId })); },
+      async commands(subId) { return must(await sb.from('commands').select('*').eq('subscription_id', subId).order('created_at', { ascending: false }).limit(12)); },
+      async bookCommands(r, rows) {
+        must(await sb.from('commands').insert(rows.map((c) => Object.assign({ subscription_id: r.subscription_id, wp_subscription_id: r.wp_subscription_id }, c))));
+      },
+      async cancelCommand(id) { must(await sb.from('commands').update({ status: 'cancelled', result: 'Cancelled in the dashboard', finished_at: new Date().toISOString() }).eq('id', id).eq('status', 'queued')); },
       async changePassword(pw) { must(await sb.auth.updateUser({ password: pw })); },
     };
     return api;

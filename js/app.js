@@ -73,7 +73,11 @@
     if (active === 'members' && memberQuery) { search.focus(); search.setSelectionRange(memberQuery.length, memberQuery.length); }
   }
 
-  function closeDrawer() { document.querySelectorAll('.scrim, .drawer').forEach((el) => el.remove()); }
+  function closeDrawer() {
+    const open = document.querySelector('.drawer');
+    document.querySelectorAll('.scrim, .drawer').forEach((el) => el.remove());
+    if (open && /^#\/members\/./.test(location.hash)) history.replaceState(null, '', '#/members');
+  }
   function drawer(content) {
     closeDrawer();
     const scrim = document.createElement('div'); scrim.className = 'scrim'; scrim.addEventListener('click', closeDrawer);
@@ -115,8 +119,9 @@
   // ---------- OVERVIEW ----------
   async function viewOverview() {
     shell('overview', html`<p class="muted">Loading…</p>`);
-    const [rows, sum, alerts] = await Promise.all([api.overview(), api.summary(THIS_MONTH), api.alerts()]);
+    const [allRows, sum, alerts] = await Promise.all([api.overview(), api.summary(THIS_MONTH), api.alerts()]);
     state.alerts = alerts;
+    const rows = allRows.filter((r) => !r.hidden_at);
     const current = rows.filter((r) => ['active', 'pending-cancel'].includes(r.status));
     const subsActive = current.filter((r) => r.kind === 'subscription');
     const monthly = subsActive.filter((r) => r.status === 'active').reduce((a, r) => a + Number(r.price || 0), 0);
@@ -135,7 +140,8 @@
         <div class="figure"><b>${subsActive.length}</b><span>${subsActive.filter((r) => r.plan === 'local').length} local, ${subsActive.filter((r) => r.plan === 'postal').length} postal members</span></div>
         <div class="figure"><b>${current.filter((r) => r.kind === 'gift').length}</b><span>gift memberships running</span></div>
         <div class="figure"><b>${gbp(monthly, 0)}</b><span>monthly subscription income</span></div>
-        <div class="figure ${sum.profit >= 0 ? 'good' : 'bad'}"><b>${gbp(sum.profit, 0)}</b><span>${monthName(THIS_MONTH, false)} profit so far</span></div>
+        <div class="figure"><b>${gbp(sum.revenue, 0)}</b><span>taken so far in ${monthName(THIS_MONTH, false)}${sum.expected_count ? html`, ${gbp(sum.expected_revenue, 0)} still due from ${sum.expected_count} ${sum.expected_count === 1 ? 'renewal' : 'renewals'}` : ''}</span></div>
+        <div class="figure ${sum.predicted_profit >= 0 ? 'good' : 'bad'}"><b>${gbp(sum.predicted_profit, 0)}</b><span>predicted ${monthName(THIS_MONTH, false)} profit once everyone due has paid</span></div>
         <div class="figure ${problems.length ? 'bad' : ''}"><b>${problems.length}</b><span>payment ${problems.length === 1 ? 'problem' : 'problems'}</span></div>
       </div>
 
@@ -156,7 +162,7 @@
               <div class="figure"><b>${sum.copies_needed}</b><span>copies to order (incl. ${setting('spare_copies', 1)} spare)</span></div>
               <div class="figure"><b>${sum.postal}</b><span>to post</span></div>
               <div class="figure"><b>${sum.local}</b><span>to collect</span></div>
-              <div class="figure"><b>${gbp(sum.revenue, 0)}</b><span>income</span></div>
+              <div class="figure"><b>${gbp(sum.revenue, 0)}</b><span>taken so far</span></div>
               <div class="figure"><b>${gbp(sum.costs, 0)}</b><span>costs</span></div>
             </div>
             ${sum.missing_book_cost ? html`<p class="small muted" style="margin-top:10px">Profit doesn't include the book yet. Add its cost per copy on This month.</p>` : ''}
@@ -175,7 +181,7 @@
           <div class="section-head"><h2>Payment problems</h2></div>
           <div class="panel">${problems.length ? html`<ul class="list">${problems.map((r) => html`
             <li><div class="alert-main"><b><a href="#/members/${r.subscription_id}">${r.name}</a></b><p>${statusTag(r)} ${r.next_payment_on ? 'Due ' + fmtShort(r.next_payment_on) : ''}</p></div>
-            <div class="num">${gbp(r.price)}</div></li>`)}</ul>` : html`<div class="empty-state">Every renewal has gone through.</div>`}</div>
+            <div class="num">${gbp(r.price)}</div><a class="btn small" href="#/members/${r.subscription_id}">Retry or send link</a></li>`)}</ul>` : html`<div class="empty-state">Every renewal has gone through.</div>`}</div>
         </div>
       </section>`);
   }
@@ -250,9 +256,10 @@
         <div class="section-head"><h2>Copies and money</h2></div>
         <div class="figures">
           <div class="figure"><b>${sum.copies_needed}</b><span>copies to order: ${sum.total_members} members + ${setting('spare_copies', 1)} spare</span></div>
-          <div class="figure"><b>${gbp(sum.revenue)}</b><span>income</span></div>
+          <div class="figure"><b>${gbp(sum.revenue)}</b><span>taken so far</span></div>
+          <div class="figure"><b>${gbp(sum.expected_revenue)}</b><span>still due from ${sum.expected_count} ${sum.expected_count === 1 ? 'renewal' : 'renewals'}</span></div>
           <div class="figure"><b>${gbp(sum.costs)}</b><span>costs</span></div>
-          <div class="figure ${sum.profit >= 0 ? 'good' : 'bad'}"><b>${gbp(sum.profit)}</b><span>profit</span></div>
+          <div class="figure ${sum.predicted_profit >= 0 ? 'good' : 'bad'}"><b>${gbp(sum.predicted_profit)}</b><span>predicted profit (${gbp(sum.profit)} so far)</span></div>
         </div>
         <div class="two-col" style="margin-top:16px">
           <div class="panel"><table class="data"><tbody>
@@ -263,7 +270,9 @@
             <tr><td>Packaging: ${sum.postal} × ${gbp(setting('packaging_per_parcel', 0.5))}</td><td class="r">−${gbp(sum.packaging)}</td></tr>
             <tr><td>Card fees</td><td class="r">−${gbp(sum.card_fees)}</td></tr>
             <tr><td>Other costs</td><td class="r">−${gbp(sum.extra_costs)}</td></tr>
-          </tbody><tfoot><tr><td>Profit</td><td class="r">${gbp(sum.profit)}</td></tr></tfoot></table></div>
+            <tr><td>Profit so far</td><td class="r">${gbp(sum.profit)}</td></tr>
+            <tr><td>Renewals still due (${sum.expected_count}), less card fees</td><td class="r">+${gbp(sum.expected_revenue - sum.expected_fees)}</td></tr>
+          </tbody><tfoot><tr><td>Predicted profit</td><td class="r">${gbp(sum.predicted_profit)}</td></tr></tfoot></table></div>
           <div class="panel pad">
             <h3>Other costs this month</h3>
             ${costs.length ? html`<ul class="list" style="margin:8px -16px">${costs.map((c) => html`<li><div class="alert-main">${c.label}</div><div class="num">${gbp(c.amount)}</div>
@@ -422,14 +431,16 @@
   async function viewMembers(openId) {
     shell('members', html`<p class="muted">Loading…</p>`);
     const rows = await api.overview();
+    const shown = (fn) => (r) => !r.hidden_at && fn(r);
     const filters = {
-      current: ['Current', (r) => ['active', 'pending-cancel', 'on-hold', 'pending'].includes(r.status)],
-      postal: ['Postal', (r) => r.plan === 'postal' && ['active', 'pending-cancel', 'on-hold'].includes(r.status)],
-      local: ['Local', (r) => r.plan === 'local' && ['active', 'pending-cancel', 'on-hold'].includes(r.status)],
-      gifts: ['Gifts', (r) => r.kind === 'gift'],
-      attention: ['Needs attention', needsAttention],
-      left: ['Left', (r) => ['cancelled', 'expired'].includes(r.status)],
-      all: ['Everyone', () => true],
+      current: ['Current', shown((r) => ['active', 'pending-cancel', 'on-hold', 'pending'].includes(r.status))],
+      postal: ['Postal', shown((r) => r.plan === 'postal' && ['active', 'pending-cancel', 'on-hold'].includes(r.status))],
+      local: ['Local', shown((r) => r.plan === 'local' && ['active', 'pending-cancel', 'on-hold'].includes(r.status))],
+      gifts: ['Gifts', shown((r) => r.kind === 'gift')],
+      attention: ['Needs attention', shown(needsAttention)],
+      left: ['Left', shown((r) => ['cancelled', 'expired'].includes(r.status))],
+      all: ['Everyone', shown(() => true)],
+      hidden: ['Hidden', (r) => !!r.hidden_at],
     };
     const render = () => {
       const q = memberQuery.toLowerCase();
@@ -449,7 +460,7 @@
     shell('members', html`
       <div class="page-head"><div><h1>Members</h1><div class="sub" id="member-count"></div></div></div>
       <div class="filters">
-        <div class="seg" role="group" aria-label="Show">${Object.entries(filters).map(([k, [label]]) => html`<button type="button" data-filter="${k}" aria-pressed="false">${label}${k === 'attention' ? ' (' + rows.filter(needsAttention).length + ')' : ''}</button>`)}</div>
+        <div class="seg" role="group" aria-label="Show">${Object.entries(filters).map(([k, [label]]) => html`<button type="button" data-filter="${k}" aria-pressed="false">${label}${k === 'attention' || k === 'hidden' ? ' (' + rows.filter(filters[k][1]).length + ')' : ''}</button>`)}</div>
       </div>
       <div class="panel table-wrap" id="member-table"></div>`);
     render();
@@ -463,9 +474,33 @@
     if (openId) memberDrawer(rows.find((r) => r.subscription_id === openId), () => viewMembers());
   }
 
+  const paymentStuck = (r) => r.kind === 'subscription' && !['cancelled', 'expired'].includes(r.status)
+    && (r.status === 'on-hold' || ['failed', 'pending'].includes(r.last_payment_status));
+  const firstName = (r) => (r.name || '').split(' ')[0] || 'there';
+  const retryDateLabel = (iso) => fmtDate(iso, { weekday: 'long', day: 'numeric', month: 'long', year: undefined });
+  const fillTemplate = (text, r, retryIso) => String(text || '')
+    .replace(/\{first_name\}/g, firstName(r)).replace(/\{name\}/g, r.name || '')
+    .replace(/\{amount\}/g, gbp(r.last_payment_amount || r.price))
+    .replace(/\{retry_date\}/g, retryIso ? retryDateLabel(retryIso) : '');
+  const emailPreview = (subject, body, r, retryIso) => html`<div class="email-preview">
+      <div class="email-subject">${fillTemplate(subject, r, retryIso)}</div>
+      ${fillTemplate(body, r, retryIso).split('{pay_link}').map((part, i, all) => html`<div class="email-text">${part.trim()}</div>${i < all.length - 1 ? html`<div class="email-button">Pay now</div>` : ''}`)}
+    </div>`;
+  const cmdLabel = (c) => {
+    const when = c.status === 'queued' ? (c.kind === 'charge' ? 'Booked for ' + fmtDate(c.run_at, { weekday: 'short', day: 'numeric', month: 'short', year: undefined }) : 'Waiting to send') : ago(c.finished_at || c.created_at);
+    const what = c.kind === 'charge' ? 'Payment retry' : (c.payload && c.payload.template === 'paylink' ? 'Payment link email' : 'Retry email');
+    const tag = { queued: html`<span class="tag plain">Booked</span>`, claimed: html`<span class="tag warn">Running</span>`, done: html`<span class="tag ok">${c.kind === 'charge' ? 'Done' : 'Sent'}</span>`,
+      failed: html`<span class="tag bad">Failed</span>`, cancelled: html`<span class="tag plain">Cancelled</span>` }[c.status];
+    return { when, what, tag };
+  };
+
   async function memberDrawer(r, onChange) {
     if (!r) { toast('Member not found'); return; }
-    const pays = await api.payments(r.subscription_id);
+    const [pays, cmds] = await Promise.all([api.payments(r.subscription_id), api.commands(r.subscription_id)]);
+    const stuck = paymentStuck(r);
+    const queuedCharge = cmds.find((c) => c.kind === 'charge' && ['queued', 'claimed'].includes(c.status));
+    const lastPoll = state.settings.connector_last_poll;
+    const canDelete = r.kind === 'subscription' && ['cancelled', 'expired'].includes(r.status);
     const fromWoo = r.source === 'online' && r.kind === 'subscription';
     const d = drawer(html`
       <div class="drawer-head"><h2>${r.name}</h2><button class="btn ghost" data-close aria-label="Close">${icons.close}</button></div>
@@ -505,13 +540,98 @@
         <div><button class="btn primary" type="submit">Save</button></div>
       </form>
 
+      ${stuck || cmds.length ? html`<section class="pay-actions panel pad">
+        <h3>Payment ${stuck ? html`<span class="tag bad">Not paid</span>` : ''}</h3>
+        ${stuck ? html`<p class="small muted" style="margin:6px 0 12px">The last renewal of ${gbp(r.last_payment_amount || r.price)} didn't go through.
+          ${lastPoll ? html`The website checks for retries every 5 minutes (last checked ${ago(lastPoll)}).` : html`<b>The website hasn't checked in yet.</b> Update the Clemo Club Connector plugin to version 1.1 first.`}</p>
+          <div class="btn-row">
+            <button class="btn primary" type="button" data-act="show-retry" ${raw(queuedCharge ? 'disabled' : '')}>Retry payment…</button>
+            <button class="btn" type="button" data-act="show-link">Send payment link…</button>
+          </div>
+          <form id="retry-form" class="act-form" hidden>
+            <label class="field">Try the card again on
+              <input type="date" name="date" id="retry-date" required min="${todayISO()}" value="${addDays(todayISO(), 3)}"></label>
+            <p class="small muted" style="margin:0">Choosing today retries within 5 minutes. Other days retry at 10am.</p>
+            <label class="check"><input type="checkbox" name="email" id="retry-email" checked> Email ${firstName(r)} to say when we'll try again</label>
+            <div id="retry-preview"></div>
+            <div class="btn-row"><button class="btn primary" type="submit">Book retry</button><button class="btn ghost" type="button" data-act="hide-forms">Cancel</button></div>
+          </form>
+          <form id="link-form" class="act-form" hidden>
+            <p class="small" style="margin:0">This emails ${r.email || 'the customer'} a link to pay for the failed renewal, using a new card if they need to.</p>
+            ${emailPreview(setting('email_paylink_subject', ''), setting('email_paylink_body', ''), r, null)}
+            <div class="btn-row"><button class="btn primary" type="submit">Send payment link</button><button class="btn ghost" type="button" data-act="hide-forms">Cancel</button></div>
+          </form>` : ''}
+        ${cmds.length ? html`<ul class="list cmd-list">${cmds.map((c) => { const l = cmdLabel(c); return html`<li>
+          <div class="alert-main"><b>${l.what}</b> ${l.tag}<p>${l.when}${c.result ? html` · ${c.result}` : ''}</p></div>
+          ${c.status === 'queued' ? html`<button class="btn small ghost" type="button" data-act="cancel-cmd" data-id="${c.id}">Cancel</button>` : ''}</li>`; })}</ul>` : ''}
+      </section>` : ''}
+
       <h3 style="margin-top:26px">Payments</h3>
       ${pays.length ? html`<table class="data" style="margin-top:6px"><tbody>${pays.map((p) => html`<tr>
         <td>${fmtDate(p.paid_at || p.order_date || p.created_at)}</td>
         <td>${p.kind === 'signup' ? 'Joined' : p.kind === 'renewal' ? 'Renewal' : 'Gift'}</td>
         <td>${p.status === 'paid' ? html`<span class="tag ok">Paid</span>` : p.status === 'failed' ? html`<span class="tag bad">Failed</span>` : html`<span class="tag plain">${p.status}</span>`}</td>
         <td class="r">${gbp(p.amount)}</td></tr>`)}</tbody></table>` : html`<p class="muted">No payments recorded.</p>`}
+
+      <section class="hide-zone">
+        ${r.hidden_at ? html`<p class="small">Hidden from your lists since ${fmtDate(r.hidden_at)}. They'll come back on their own if a new payment comes through.</p>
+          <button class="btn" type="button" data-act="unhide">Show in lists again</button>`
+        : html`<div class="btn-row"><button class="btn" type="button" data-act="ask-hide">Hide from lists</button>
+          ${canDelete ? html`<button class="btn danger" type="button" data-act="ask-delete">Delete…</button>` : ''}</div>
+          <div class="confirm" id="confirm-hide" hidden>
+            <p class="small">${['active', 'on-hold', 'pending-cancel'].includes(r.status) && !(r.kind === 'gift' && r.gift_end_month && r.gift_end_month < THIS_MONTH)
+              ? html`<b>${firstName(r)} is still a current member.</b> Hiding only takes them out of your lists: they'll still get the book each month, and any new payment brings them back.`
+              : html`They'll disappear from your lists and alerts. If a new payment or subscription comes through, they'll reappear.`}</p>
+            <div class="btn-row"><button class="btn primary" type="button" data-act="hide">Hide</button><button class="btn ghost" type="button" data-act="hide-forms">Cancel</button></div>
+          </div>
+          <div class="confirm danger" id="confirm-delete" hidden>
+            <p class="small"><b>This wipes ${firstName(r)}'s name, email, phone and address from the dashboard for good.</b> Their payments stay in your totals without a name, and nothing changes in WooCommerce. If they subscribe again they'll appear as a new member.</p>
+            <div class="btn-row"><button class="btn primary danger-fill" type="button" data-act="delete">Delete for good</button><button class="btn ghost" type="button" data-act="hide-forms">Cancel</button></div>
+          </div>`}
+      </section>
     `);
+    const refresh = () => { closeDrawer(); onChange && onChange(); };
+    const hideForms = () => d.querySelectorAll('.act-form, .confirm').forEach((el) => { el.hidden = true; });
+    const showRetryPreview = () => {
+      const date = d.querySelector('#retry-date').value;
+      d.querySelector('#retry-preview').innerHTML = d.querySelector('#retry-email').checked
+        ? emailPreview(setting('email_retry_subject', ''), setting('email_retry_body', ''), r, date) : '';
+    };
+    d.addEventListener('click', async (e) => {
+      const t = e.target.closest('[data-act]'); if (!t) return;
+      const act = t.dataset.act;
+      if (act === 'hide-forms') hideForms();
+      if (act === 'show-retry') { hideForms(); d.querySelector('#retry-form').hidden = false; showRetryPreview(); }
+      if (act === 'show-link') { hideForms(); d.querySelector('#link-form').hidden = false; }
+      if (act === 'ask-hide') { hideForms(); d.querySelector('#confirm-hide').hidden = false; }
+      if (act === 'ask-delete') { hideForms(); d.querySelector('#confirm-delete').hidden = false; }
+      if (act === 'hide') { await guard(() => api.setHidden(r.subscription_id, true), r.name + ' hidden'); refresh(); }
+      if (act === 'unhide') { await guard(() => api.setHidden(r.subscription_id, false), r.name + ' is back in your lists'); refresh(); }
+      if (act === 'delete') { t.disabled = true; await guard(() => api.deleteSubscription(r.subscription_id), 'Deleted'); refresh(); }
+      if (act === 'cancel-cmd') { await guard(() => api.cancelCommand(t.dataset.id), 'Cancelled'); closeDrawer(); memberDrawer(r, onChange); }
+    });
+    const rf = d.querySelector('#retry-form');
+    if (rf) {
+      rf.addEventListener('input', showRetryPreview);
+      rf.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const date = rf.date.value;
+        if (!date || date < todayISO()) { toast('Choose today or a later date'); return; }
+        const runAt = date === todayISO() ? new Date().toISOString() : date + ' 10:00:00 Europe/London';
+        const rows = [{ kind: 'charge', run_at: runAt, payload: { retry_date: retryDateLabel(date) } }];
+        if (rf.email.checked) rows.unshift({ kind: 'email', run_at: new Date().toISOString(), payload: { template: 'retry',
+          subject: setting('email_retry_subject', ''), body: setting('email_retry_body', ''), retry_date: retryDateLabel(date) } });
+        await guard(() => api.bookCommands(r, rows), date === todayISO() ? 'Retrying within 5 minutes' : 'Retry booked for ' + retryDateLabel(date));
+        closeDrawer(); memberDrawer(r, onChange);
+      });
+    }
+    const lf = d.querySelector('#link-form');
+    if (lf) lf.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await guard(() => api.bookCommands(r, [{ kind: 'email', run_at: new Date().toISOString(), payload: { template: 'paylink',
+        subject: setting('email_paylink_subject', ''), body: setting('email_paylink_body', '') } }]), 'Payment link will be sent within 5 minutes');
+      closeDrawer(); memberDrawer(r, onChange);
+    });
     d.querySelector('[data-close]').onclick = () => { closeDrawer(); history.replaceState(null, '', '#/members'); };
     d.querySelector('#member-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -533,7 +653,7 @@
   // ---------- GIFTS ----------
   async function viewGifts() {
     shell('gifts', html`<p class="muted">Loading…</p>`);
-    const rows = (await api.overview()).filter((r) => r.kind === 'gift');
+    const rows = (await api.overview()).filter((r) => r.kind === 'gift' && !r.hidden_at);
     const soon = addMonths(THIS_MONTH, 1);
     const groups = [
       ['Start month needed', rows.filter((r) => !r.gift_start_month && r.status !== 'cancelled')],
@@ -694,6 +814,16 @@
             <label class="field wide">Return address<input type="text" name="sender_address" value="${v('sender_address', '')}"></label>
             <label class="check wide"><input type="checkbox" name="label_return_address" ${raw(v('label_return_address', false) ? 'checked' : '')}> Add a small return address to labels by default</label>
           </div></section>
+        <section class="section"><div class="section-head"><h2>Payment emails</h2></div>
+          <div class="panel pad" style="display:grid;gap:14px">
+            <p class="small muted" style="margin:0">Sent from your shop's email address in WooCommerce's email style. You can use
+              <code>{first_name}</code>, <code>{name}</code>, <code>{amount}</code>, <code>{retry_date}</code> and <code>{pay_link}</code>.
+              <code>{pay_link}</code> becomes a "Pay now" button.</p>
+            <label class="field">"We'll try again" email: subject<input type="text" name="email_retry_subject" value="${v('email_retry_subject', '')}"></label>
+            <label class="field">"We'll try again" email: message<textarea name="email_retry_body" rows="9">${v('email_retry_body', '')}</textarea></label>
+            <label class="field">Payment link email: subject<input type="text" name="email_paylink_subject" value="${v('email_paylink_subject', '')}"></label>
+            <label class="field">Payment link email: message<textarea name="email_paylink_body" rows="8">${v('email_paylink_body', '')}</textarea></label>
+          </div></section>
         <p style="margin-top:16px"><button class="btn primary" type="submit">Save settings</button></p>
       </form>
 
@@ -731,7 +861,9 @@
       const nums = ['postage_per_parcel', 'packaging_per_parcel', 'stripe_percent', 'stripe_fixed', 'spare_copies', 'grace_days', 'label_alert_day', 'gift_ending_alert_days', 'parcel_weight_g'];
       const out = {};
       nums.forEach((k) => { out[k] = Number(f.get(k)); });
-      ['label_layout', 'click_drop_service', 'click_drop_package', 'sender_name', 'sender_address'].forEach((k) => { out[k] = (f.get(k) || '').trim(); });
+      ['label_layout', 'click_drop_service', 'click_drop_package', 'sender_name', 'sender_address', 'email_retry_subject', 'email_paylink_subject'].forEach((k) => { out[k] = (f.get(k) || '').trim(); });
+      ['email_retry_body', 'email_paylink_body'].forEach((k) => { out[k] = (f.get(k) || '').replace(/\r\n/g, '\n').trim(); });
+      if (!out.email_retry_body.includes('{pay_link}') || !out.email_paylink_body.includes('{pay_link}')) { toast('Keep {pay_link} in both emails so customers can pay'); return; }
       out.label_return_address = !!f.get('label_return_address');
       await guard(() => api.saveSettings(out), 'Settings saved');
       Object.assign(state.settings, out);

@@ -13,6 +13,11 @@
       grace_days: 3, postage_per_parcel: 2.70, packaging_per_parcel: 0.50, stripe_percent: 1.5, stripe_fixed: 0.20,
       spare_copies: 1, label_layout: 'L7160', label_alert_day: 1, gift_ending_alert_days: 14,
       parcel_weight_g: 400, click_drop_service: '', sender_name: 'Clemo Books', sender_address: '33b Bank St, Newquay, Cornwall, TR7 1DJ',
+      connector_last_poll: new Date(Date.now() - 3 * 60000).toISOString(),
+      email_retry_subject: 'Your Clemo Club payment didn\'t go through',
+      email_retry_body: 'Hi {first_name},\n\nWe tried to take your Clemo Club payment of {amount}, but it didn\'t go through.\n\nWe\'ll try again on {retry_date}, so there\'s nothing you need to do if your card is fine. If your card has changed or expired, you can pay with a different one here:\n\n{pay_link}\n\nAny questions, just reply to this email.\n\nThanks,\nClemo Books',
+      email_paylink_subject: 'Pay for your Clemo Club subscription',
+      email_paylink_body: 'Hi {first_name},\n\nYour Clemo Club payment of {amount} didn\'t go through. You can pay securely here, using a new card if yours has changed:\n\n{pay_link}\n\nAny questions, just reply to this email.\n\nThanks,\nClemo Books',
     };
     const S = (k, d) => (settings[k] == null ? d : Number(settings[k]));
 
@@ -36,7 +41,7 @@
       ['Joe', 'Nance', 'postal', 300, 'cancelled', '6 Quay Street', 'Padstow', 'PL28 8AD'],
     ];
 
-    const members = [], subs = [], payments = [], fulfilment = [], alerts = [], books = [], costs = [], labelRuns = [];
+    const members = [], subs = [], payments = [], fulfilment = [], alerts = [], books = [], costs = [], labelRuns = [], commands = [];
 
     people.forEach((p, i) => {
       const [first, last, plan, startAgo, status, a1, city, pc] = p;
@@ -45,7 +50,7 @@
       members.push(m);
       const started = daysAgo(startAgo);
       const price = plan === 'postal' ? 19.99 : 16.99;
-      const s = { id: id(), member_id: m.id, kind: 'subscription', plan, source: 'online', status: status === 'failed' ? 'active' : status,
+      const s = { id: id(), member_id: m.id, kind: 'subscription', plan, source: 'online', status: status === 'failed' ? 'on-hold' : status,
         price, wp_subscription_id: 3000 + i, started_on: started, next_payment_on: null, cancelled_at: null, ended_at: null, notes: null };
       // monthly payments
       let due = started, n = 0;
@@ -141,6 +146,7 @@
         last_paid_at: paid.map((p) => p.paid_at).sort().pop() || null,
         months_member: s.started_on ? monthsBetween(s.started_on, (s.ended_at || s.cancelled_at || today).slice(0, 10)) : 0,
         last_payment_failed: !!(last && last.status === 'failed'), overdue: !!overdue,
+        hidden_at: s.hidden_at || null, last_payment_status: last ? last.status : null, last_payment_amount: last ? last.amount : null,
       });
     }
     function eligible(month) {
@@ -186,7 +192,17 @@
       return { month, book: b, local, postal, total_members: local + postal, copies_needed: local + postal + S('spare_copies', 1), copies,
         subscription_revenue: r2(subRev), subscription_payments: sp.length, gift_revenue: r2(giftRev), revenue: r2(revenue),
         book_cost: r2(bookCost), postage: r2(postage), packaging: r2(packaging), card_fees: r2(subFees + giftFees), extra_costs: r2(extra),
-        costs: r2(totalCosts), profit: r2(revenue - totalCosts), missing_book_cost: !b || b.cost_per_copy == null };
+        costs: r2(totalCosts), profit: r2(revenue - totalCosts), missing_book_cost: !b || b.cost_per_copy == null,
+        ...expected(month, revenue, totalCosts, r2) };
+    }
+    function expected(month, revenue, totalCosts, r2) {
+      const next = addMonths(month, 1);
+      const due = month < thisMonth ? [] : subs.filter((s) => s.kind === 'subscription' && !s.deleted_at && ['active', 'on-hold'].includes(s.status)
+        && s.next_payment_on && s.next_payment_on >= month && s.next_payment_on < next && s.price > 0);
+      const rev = due.reduce((a, s) => a + s.price, 0);
+      const fees = due.reduce((a, s) => a + Math.round((s.price * S('stripe_percent', 1.5) / 100 + S('stripe_fixed', 0.2)) * 100) / 100, 0);
+      return { expected_revenue: r2(rev), expected_count: due.length, expected_fees: r2(fees),
+        predicted_revenue: r2(revenue + rev), predicted_profit: r2(revenue + rev - totalCosts - fees) };
     }
 
     const wait = (v) => new Promise((r) => setTimeout(() => r(v), 60));
@@ -201,7 +217,7 @@
       async markAlert(aid, read = true) { const a = alerts.find((x) => x.id === aid); if (a) a.read_at = read ? new Date().toISOString() : null; },
       async markAllAlerts() { alerts.forEach((a) => { if (!a.read_at) a.read_at = new Date().toISOString(); }); },
       watchAlerts() { return null; },
-      async overview() { return wait(subs.map(overviewRow).sort((a, b) => a.name.localeCompare(b.name))); },
+      async overview() { return wait(subs.filter((s) => !s.deleted_at).map(overviewRow).sort((a, b) => a.name.localeCompare(b.name))); },
       async payments(subId) { return wait(clone(payments.filter((p) => p.subscription_id === subId).sort((a, b) => (b.order_date || '').localeCompare(a.order_date || '')))); },
       async updateMember(mid, f) { Object.assign(members.find((m) => m.id === mid), f); },
       async updateSubscription(sid, f) { Object.assign(subs.find((s) => s.id === sid), f); },
@@ -240,6 +256,37 @@
           { id: 1, received_at: new Date(Date.now() - 86400e3).toISOString(), event_type: 'ping', wp_id: null, result: 'pong' }];
       },
       async changePassword() { throw new Error('Passwords can’t be changed in the demo'); },
+      async setHidden(sid, hidden) {
+        const s = subs.find((x) => x.id === sid); s.hidden_at = hidden ? new Date().toISOString() : null;
+        if (hidden) alerts.forEach((a) => { if (a.subscription_id === sid && !a.read_at) a.read_at = new Date().toISOString(); });
+      },
+      async deleteSubscription(sid) {
+        const s = subs.find((x) => x.id === sid);
+        if (s.kind === 'gift') throw new Error('Gift memberships can be hidden but not deleted.');
+        if (!['cancelled', 'expired'].includes(s.status)) throw new Error('Cancel this subscription in WooCommerce first. Only ended subscriptions can be deleted.');
+        s.deleted_at = new Date().toISOString();
+        const m = members.find((x) => x.id === s.member_id);
+        Object.assign(m, { first_name: 'Deleted', last_name: 'member', email: null, phone: null, address_1: null, address_2: null, city: null, postcode: null, notes: null });
+        return 'deleted';
+      },
+      async commands(sid) { return clone(commands.filter((c) => c.subscription_id === sid).sort((a, b) => b.created_at.localeCompare(a.created_at))); },
+      async bookCommands(r, rows) {
+        rows.forEach((c) => commands.push(Object.assign({ id: id(), subscription_id: r.subscription_id, status: 'queued', result: null,
+          created_at: new Date().toISOString(), finished_at: null }, c, { run_at: /Europe/.test(c.run_at) ? c.run_at.slice(0, 10) + 'T09:00:00Z' : c.run_at })));
+        // pretend the website picked the work up a moment later
+        setTimeout(() => {
+          commands.forEach((c) => {
+            if (c.status !== 'queued' || c.run_at > new Date().toISOString()) return;
+            c.finished_at = new Date().toISOString();
+            if (c.kind === 'email') { c.status = 'done'; c.result = 'Emailed ' + (r.email || 'the customer') + ' (demo, nothing was sent)'; return; }
+            const p = payments.find((x) => x.subscription_id === c.subscription_id && x.status === 'failed');
+            const s = subs.find((x) => x.id === c.subscription_id);
+            if (p) { p.status = 'paid'; p.paid_at = new Date().toISOString(); s.status = 'active'; s.next_payment_on = addMonthsDate(s.next_payment_on, 1); }
+            c.status = 'done'; c.result = 'Paid £' + (p ? p.amount.toFixed(2) : '0.00') + ' (demo, nobody was charged)';
+          });
+        }, 1500);
+      },
+      async cancelCommand(cid) { const c = commands.find((x) => x.id === cid && x.status === 'queued'); if (c) { c.status = 'cancelled'; c.result = 'Cancelled in the dashboard'; c.finished_at = new Date().toISOString(); } },
       async runChecks() { prepare(thisMonth); return { overdue: subs.map(overviewRow).filter((o) => o.overdue).length }; },
     };
   };
